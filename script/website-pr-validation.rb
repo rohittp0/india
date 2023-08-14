@@ -15,8 +15,6 @@ $ISSUES_PRESENT = false
 MAINTAINERS_FAILED_VALIDATION = []
 # Array to store projects with failed validation in {BASE_PATH}/projects.yml file
 OSSPROJECTS_FAILED_VALIDATION = []
-# Array to store projects with failed validation in {BASE_PATH}/social-good-projects.yml file
-SOCIALGOOD_FAILED_VALIDATION = []
 
 # Function to sleep the script for sometime when the API limit is hit
 def waitTillLimitReset
@@ -33,15 +31,13 @@ end
 def prepareJobSummary(category, issues, title)
     $ISSUES_PRESENT = true
     body = {
-        :title => title,
-        :issues => issues
+      :title => title,
+      :issues => issues
     }
     if category == "maintainers"
         MAINTAINERS_FAILED_VALIDATION.push(body)
     elsif category == "ossProjects"
         OSSPROJECTS_FAILED_VALIDATION.push(body)
-    else
-        SOCIALGOOD_FAILED_VALIDATION.push(body)
     end
 end
 
@@ -60,15 +56,6 @@ def createJobSummary
     if OSSPROJECTS_FAILED_VALIDATION.length() != 0
         comment += "- OSS Projects\n"
         for issueObject in OSSPROJECTS_FAILED_VALIDATION do
-            comment += "\t- `#{issueObject[:title]}`\n"
-            for issue in issueObject[:issues] do
-                comment += "\t\t- #{issue}\n"
-            end
-        end
-    end
-    if SOCIALGOOD_FAILED_VALIDATION.length() != 0
-        comment += "- Social Good Projects\n"
-        for issueObject in SOCIALGOOD_FAILED_VALIDATION do
             comment += "\t- `#{issueObject[:title]}`\n"
             for issue in issueObject[:issues] do
                 comment += "\t\t- #{issue}\n"
@@ -117,7 +104,7 @@ def validateProject(data, isSocialGood = false)
     # Check if project is private
     if data.private
         fails.push("Project is either private or doesn't exist!")
-    end 
+    end
     # Check if project has license
     if data.license == nil
         fails.push("Project doesn't have a license")
@@ -129,7 +116,7 @@ def validateProject(data, isSocialGood = false)
     return fails
 end
 
-# Function for fetching all the details of the maintainers 
+# Function for fetching all the details of the maintainers
 # from the maintainers list at {BASE_PATH}/maintainers.yml
 # and check if the maintainers are valid or not
 def checkMaintainersData()
@@ -140,7 +127,7 @@ def checkMaintainersData()
                 maintainer = getMaintainer(maintainerName)
                 issues = validateMaintainer(maintainer)
                 if issues.length() != 0
-                    preparePRComments("maintainers", issues, maintainerName)
+                    prepareJobSummary("maintainers", issues, maintainerName)
                 end
             rescue => e
                 @logger.info("Error #{e.response_status}")
@@ -149,11 +136,11 @@ def checkMaintainersData()
                     maintainer = getMaintainer(maintainerName)
                     issues = validateMaintainer(maintainer)
                     if issues.length() != 0
-                        preparePRComments("maintainers", issues, maintainerName)
+                        prepareJobSummary("maintainers", issues, maintainerName)
                     end
                 else
                     @logger.info("Error on maintainer: #{maintainerName}")
-                    preparePRComments("maintainers", ["User with username #{maintainerName} doesn't exist!"], maintainerName)
+                    prepareJobSummary("maintainers", ["User with username #{maintainerName} doesn't exist!"], maintainerName)
                 end
             end
         end
@@ -164,40 +151,38 @@ end
 # from the projects list at {BASE_PATH}/{fileName}
 # and check if the projects are valid or not
 # Params:
-# fileName: 
+# fileName:
 #   - Indicates the file location of the list of projects present
-#   - Values can be either "projects.yml" or "social-good-projects.yml" 
+#   - Values can be either "projects.yml" or "social-good-projects.yml"
 def checkProjectsData(fileName)
     projectsList = JSON.parse(YAML.load(File.open("#{BASE_PATH}/#{fileName}"), :safe => true).to_json)
     if fileName == "projects.yml"
         issueCategory = "ossProjects"
-    else
-        issueCategory = "socialGoodProjects"
     end
     for category in projectsList.keys do
         if projectsList[category] == nil then
-            preparePRComments(issueCategory, ["Each category should contain atleast 1 project."], "#{category} in #{fileName}")
+            prepareJobSummary(issueCategory, ["Each category should contain atleast 1 project."], "#{category} in #{fileName}")
             next
         end
         for projectName in projectsList[category] do
             begin
                 project = getProject(projectName)
-                issues = validateProject(project, issueCategory == "socialGoodProjects")
+                issues = validateProject(project, false)
                 if issues.length() != 0
-                    preparePRComments(issueCategory, issues, projectName)
+                    prepareJobSummary(issueCategory, issues, projectName)
                 end
             rescue => e
                 @logger.info("Error: #{e.response_status}")
                 if e.response_status == 403
                     waitTillLimitReset()
                     project = getProject(projectName)
-                    issues = validateProject(project, issueCategory == "socialGoodProjects")
+                    issues = validateProject(project, false)
                     if issues.length() != 0
-                        preparePRComments(issueCategory, issues, projectName)
+                        prepareJobSummary(issueCategory, issues, projectName)
                     end
                 else
                     @logger.info("Error on project: #{projectName}")
-                    preparePRComments(issueCategory, ["Project #{projectName} is either private or doesn't exist!"], projectName)
+                    prepareJobSummary(issueCategory, ["Project #{projectName} is either private or doesn't exist!"], projectName)
                 end
             end
         end
@@ -213,14 +198,10 @@ checkMaintainersData()
 checkProjectsData("projects.yml")
 @logger.info("OSS Projects data checked")
 @logger.info("-------------------------------")
-@logger.info("Checking Social Good Projects...")
-checkProjectsData("social-good-projects.yml")
-@logger.info("Social Good Projects data checked")
-@logger.info("-------------------------------")
 
-if MAINTAINERS_FAILED_VALIDATION.length() != 0 || OSSPROJECTS_FAILED_VALIDATION.length() != 0 || SOCIALGOOD_FAILED_VALIDATION.length() != 0
+if MAINTAINERS_FAILED_VALIDATION.length() != 0 || OSSPROJECTS_FAILED_VALIDATION.length() != 0
     @logger.info("Creating Comment")
-    createPRSummary()
+    createJobSummary()
     exit(1)
 end
 @logger.info("-------------------------------")
