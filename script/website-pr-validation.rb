@@ -15,6 +15,8 @@ $ISSUES_PRESENT = false
 MAINTAINERS_FAILED_VALIDATION = []
 # Array to store projects with failed validation in {BASE_PATH}/projects.yml file
 OSSPROJECTS_FAILED_VALIDATION = []
+# Array to store projects with failed validation in {BASE_PATH}/social-good-projects.yml file
+SOCIALGOOD_FAILED_VALIDATION = []
 
 # Function to sleep the script for sometime when the API limit is hit
 def waitTillLimitReset
@@ -38,6 +40,8 @@ def prepareJobSummary(category, issues, title)
         MAINTAINERS_FAILED_VALIDATION.push(body)
     elsif category == "ossProjects"
         OSSPROJECTS_FAILED_VALIDATION.push(body)
+    else
+        SOCIALGOOD_FAILED_VALIDATION.push(body)
     end
 end
 
@@ -56,6 +60,15 @@ def createJobSummary
     if OSSPROJECTS_FAILED_VALIDATION.length() != 0
         comment += "- OSS Projects\n"
         for issueObject in OSSPROJECTS_FAILED_VALIDATION do
+            comment += "\t- `#{issueObject[:title]}`\n"
+            for issue in issueObject[:issues] do
+                comment += "\t\t- #{issue}\n"
+            end
+        end
+    end
+    if SOCIALGOOD_FAILED_VALIDATION.length() != 0
+        comment += "- Social Good Projects\n"
+        for issueObject in SOCIALGOOD_FAILED_VALIDATION do
             comment += "\t- `#{issueObject[:title]}`\n"
             for issue in issueObject[:issues] do
                 comment += "\t\t- #{issue}\n"
@@ -167,7 +180,7 @@ def checkProjectsData(fileName)
         for projectName in projectsList[category] do
             begin
                 project = getProject(projectName)
-                issues = validateProject(project, false)
+                issues = validateProject(project, issueCategory == "socialGoodProjects")
                 if issues.length() != 0
                     prepareJobSummary(issueCategory, issues, projectName)
                 end
@@ -176,7 +189,7 @@ def checkProjectsData(fileName)
                 if e.response_status == 403
                     waitTillLimitReset()
                     project = getProject(projectName)
-                    issues = validateProject(project, false)
+                    issues = validateProject(project, issueCategory == "socialGoodProjects")
                     if issues.length() != 0
                         prepareJobSummary(issueCategory, issues, projectName)
                     end
@@ -191,7 +204,7 @@ end
 
 @logger.info("-------------------------------")
 @logger.info("Checking Maintainers...")
-checkMaintainersData()
+checkMaintainersData
 @logger.info("Maintainers data checked")
 @logger.info("-------------------------------")
 @logger.info("Checking OSS Projects...")
@@ -199,9 +212,11 @@ checkProjectsData("projects.yml")
 @logger.info("OSS Projects data checked")
 @logger.info("-------------------------------")
 
-if MAINTAINERS_FAILED_VALIDATION.length() != 0 || OSSPROJECTS_FAILED_VALIDATION.length() != 0
+if MAINTAINERS_FAILED_VALIDATION.length() != 0 ||
+  OSSPROJECTS_FAILED_VALIDATION.length() != 0 ||
+  SOCIALGOOD_FAILED_VALIDATION.length() != 0
     @logger.info("Creating Comment")
-    createJobSummary()
+    createJobSummary
     exit(1)
 end
 @logger.info("-------------------------------")
